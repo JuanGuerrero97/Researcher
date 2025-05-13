@@ -10,7 +10,7 @@ from utils.ip_generator import generate_ip
 class DefuncionesScraper:
     """
     Scraper asíncrono para consultar vigencia de cédula en Registraduría.
-    Aplica semáforo para concurrencia y cambia IP cada cierto intervalo.
+    Usa semáforo para concurrencia y cambia IP cada cierto intervalo.
     """
 
     def __init__(self, url: str, max_concurrent: int, ip_interval: int) -> None:
@@ -35,7 +35,7 @@ class DefuncionesScraper:
         Returns
         -------
         dict
-            {'Documento': nuip, 'Vigencia': 'Si|No|Error'}.
+            {'Documento': nuip, 'Vigencia': 'Si|No disponible|Error'}.
         """
         payload = {"nuip": nuip, "ip": ip}
         try:
@@ -45,6 +45,13 @@ class DefuncionesScraper:
         except Exception:
             vigencia = "Error"
         return {"Documento": nuip, "Vigencia": vigencia}
+
+    async def _limited_task(self, session: ClientSession, nuip: str, ip: str) -> dict:
+        """
+        Wrapper que aplica el semáforo para limitar concurrencia.
+        """
+        async with self.semaphore:
+            return await self._fetch(session, nuip, ip)
 
     async def run(
         self,
@@ -67,23 +74,20 @@ class DefuncionesScraper:
         pd.DataFrame
         """
         tasks = []
-        resultados = []
         async with ClientSession() as session:
             current_ip = generate_ip()
             for idx, nuip in enumerate(nuips):
+                # Renueva IP cada ip_interval peticiones
                 if idx % self.ip_interval == 0:
                     current_ip = generate_ip()
                 tasks.append(self._limited_task(session, nuip, current_ip))
 
             total = len(tasks)
+            resultados = []
             for idx, coro in enumerate(asyncio.as_completed(tasks), start=1):
                 resultados.append(await coro)
-                fraction = idx / total
-                progress_bar.progress(fraction)
-                progress_label.text(f"{idx} de {total} ({fraction:.1%})")
+                frac = idx / total
+                progress_bar.progress(frac)
+                progress_label.text(f"{idx} de {total} ({frac:.1%})")
 
         return pd.DataFrame(resultados)
-
-    async def _limited_task(self, session, nuip, ip):
-        async with self.semaphore:
-            return await self._fetch(session, nuip, ip)

@@ -21,8 +21,8 @@ class DeudoresScraper:
             Máximo de peticiones concurrentes.
         """
         self.url = url
+        self.max_concurrent = max_concurrent
         self.semaphore = asyncio.Semaphore(max_concurrent)
-        self.connector = TCPConnector(limit_per_host=max_concurrent)
 
     async def _fetch(self, session: ClientSession, doc: str) -> dict:
         """
@@ -48,12 +48,18 @@ class DeudoresScraper:
                         estado = "No moroso"
                 else:
                     sancionado = None
-                    estado = "Error"
+                    estado = f"Error {resp.status}"
         except Exception:
             sancionado = None
             estado = "Error"
-
         return {"Documento": doc, "Sancionado": sancionado, "Estado": estado}
+
+    async def _limited_task(self, session: ClientSession, doc: str) -> dict:
+        """
+        Wrapper que aplica el semáforo para limitar concurrencia.
+        """
+        async with self.semaphore:
+            return await self._fetch(session, doc)
 
     async def run(
         self,
@@ -74,21 +80,17 @@ class DeudoresScraper:
         -------
         pd.DataFrame
         """
-        async with ClientSession(connector=self.connector) as session:
-            tasks = [
-                self._limited_task(session, str(doc))
-                for doc in nuips
-            ]
+        # Creamos el connector dentro de un event loop activo
+        connector = TCPConnector(limit_per_host=self.max_concurrent)
+
+        async with ClientSession(connector=connector) as session:
+            tasks = [self._limited_task(session, str(doc)) for doc in nuips]
             total = len(tasks)
             resultados = []
             for idx, coro in enumerate(asyncio.as_completed(tasks), start=1):
                 resultados.append(await coro)
-                fraction = idx / total
-                progress_bar.progress(fraction)
-                progress_label.text(f"{idx} de {total} ({fraction:.1%})")
+                frac = idx / total
+                progress_bar.progress(frac)
+                progress_label.text(f"{idx} de {total} ({frac:.1%})")
 
         return pd.DataFrame(resultados)
-
-    async def _limited_task(self, session, doc):
-        async with self.semaphore:
-            return await self._fetch(session, doc)
