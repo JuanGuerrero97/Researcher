@@ -7,6 +7,6 @@ from .defunciones.defunciones_scraper import DefuncionesScraper
 from .deudores.deudores_scraper import DeudoresScraper
 
 SCRAPER_CLASSES = {
-    "defunciones": DefuncionesScraper,
-    "deudores": DeudoresScraper,
+    "Defunciones Registraduría": DefuncionesScraper,
+    "Morosidad Judicial": DeudoresScraper,
 }
