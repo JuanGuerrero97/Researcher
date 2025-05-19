@@ -1,16 +1,24 @@
 import asyncio
 from time import perf_counter
-
 import streamlit as st
 
 from config.scrappers_config import SCRAPERS
 from scrappers import SCRAPER_CLASSES
 from utils.data_loader import load_data
+from auth.auth import login, register_user  # IMPORTAR MÓDULO DE AUTENTICACIÓN
 
 
 def main():
-    """Punto de entrada de la aplicación Streamlit."""
     st.set_page_config(page_title="KnowMe", layout="wide")
+
+    # --- Inicio de sesión ---
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        login()
+        st.stop()  # Evita que continúe si no ha iniciado sesión
+    register_user()  # <-- Mostrar opción de crear usuarios si es admin
     st.title("📡 KnowMe")
     st.markdown(
         "Sube un archivo CSV o Excel con una sola columna de documentos "
@@ -31,6 +39,7 @@ def main():
 
     with st.sidebar:
         st.header("Opciones")
+        st.markdown(f"👤 Usuario: `{st.session_state['user']}`")
         choice = st.selectbox("Selecciona scraper:", list(SCRAPERS.keys()))
         run_button = st.button("Iniciar Scraping")
 
